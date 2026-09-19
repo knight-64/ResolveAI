@@ -1,0 +1,155 @@
+// Prisma Schema for ResolveAI - Paytm Build for India AI Hackathon
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum IssueCategory {
+  PAYMENT_FAILED
+  PAYMENT_PENDING
+  PAYMENT_REVERSED
+  REFUND
+  TRANSACTION_STATUS
+  ACCOUNT_ISSUE
+  FRAUD_ALERT
+  KYC
+  GENERAL_SUPPORT
+}
+
+enum TransactionStatus {
+  SUCCESS
+  PENDING
+  FAILED
+  REFUNDED
+  REVERSED
+}
+
+enum RefundStatus {
+  COMPLETED
+  IN_PROGRESS
+  INITIATED
+  FAILED
+  NOT_APPLICABLE
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ResolutionStatus {
+  RESOLVED
+  PENDING_USER_ACTION
+  ESCALATED
+  UNDER_INVESTIGATION
+}
+
+model User {
+  id            String         @id @default(uuid())
+  phoneNumber   String         @unique
+  fullName      String
+  upiId         String?
+  kycStatus     String         @default("VERIFIED") // VERIFIED, PENDING, MINIMUM_KYC
+  createdAt     DateTime       @default(now())
+  conversations Conversation[]
+  transactions  Transaction[]
+  supportTickets SupportTicket[]
+}
+
+model Conversation {
+  id               String            @id @default(uuid())
+  userId           String
+  user             User              @relation(fields: [userId], references: [id])
+  title            String            @default("Support Session")
+  status           String            @default("ACTIVE") // ACTIVE, RESOLVED, ESCALATED
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  messages         Message[]
+  agentExecutions  AgentExecution[]
+}
+
+model Message {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id])
+  sender         String         // "user" | "agent" | "system"
+  content        String
+  agentName      String?
+  intent         IssueCategory?
+  confidence     Float?
+  resolutionCard Json?
+  createdAt      DateTime       @default(now())
+}
+
+model Transaction {
+  id             String            @id // e.g. TXN1001
+  userId         String
+  user           User              @relation(fields: [userId], references: [id])
+  amount         Float
+  status         TransactionStatus
+  merchant       String
+  upiId          String?
+  bankName       String
+  paymentMode    String            // UPI, WALLET, CREDIT_CARD
+  failureReason  String?
+  isSimulated    Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  refunds        Refund[]
+  supportTickets SupportTicket[]
+}
+
+model Refund {
+  id                     String       @id // e.g. REF-2001
+  transactionId          String
+  transaction            Transaction  @relation(fields: [transactionId], references: [id])
+  amount                 Float
+  status                 RefundStatus
+  initiatedAt            DateTime     @default(now())
+  estimatedCompletionAt DateTime
+  completedAt            DateTime?
+  destinationAccount     String
+  rrnNumber              String?
+  reason                 String?
+}
+
+model SupportTicket {
+  id              String         @id // e.g. RA-10293
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  transactionId   String?
+  transaction     Transaction?   @relation(fields: [transactionId], references: [id])
+  category        IssueCategory
+  priority        TicketPriority @default(MEDIUM)
+  issue           String
+  assignedTeam    String
+  status          TicketStatus   @default(OPEN)
+  resolutionNotes String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model AgentExecution {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id])
+  agentName      String
+  intent         IssueCategory
+  confidence     Float
+  toolsCalled    Json?
+  durationMs     Int
+  resolution     ResolutionStatus
+  createdAt      DateTime       @default(now())
+}
